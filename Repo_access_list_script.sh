@@ -1,47 +1,43 @@
 #!/bin/bash
-################################
-# Author: Sai
-# Version: v1
-#
-#
-#
-# This script will help users to communicate and retrieve information from GitHub
-# Usage:
-#   Please provide your github token and rest api to the script as input
-#
-################################
 
-if [ ${#@} -lt 2 ]; then
-    echo "usage: $0 [your github token] [REST expression]"
-    exit 1;
-fi
+# GitHub API URL
+API_URL="https://api.github.com"
 
-GITHUB_TOKEN=$1
-GITHUB_API_REST=$2
+# GitHub username and personal access token
+USERNAME=$username
+TOKEN=$token
 
-GITHUB_API_HEADER_ACCEPT="Accept: application/vnd.github.v3+json"
+# User and Repository information
+REPO_OWNER=$1
+REPO_NAME=$2
 
-temp=`basename $0`
-TMPFILE=`mktemp /tmp/${temp}.XXXXXX` || exit 1
+# Function to make a GET request to the GitHub API
+function github_api_get {
+    local endpoint="$1"
+    local url="${API_URL}/${endpoint}"
 
-
-function rest_call {
-    curl -s $1 -H "${GITHUB_API_HEADER_ACCEPT}" -H "Authorization: token $GITHUB_TOKEN" >> $TMPFILE
+    # Send a GET request to the GitHub API with authentication
+    curl -s -u "${USERNAME}:${TOKEN}" "$url"
 }
 
-# single page result-s (no pagination), have no Link: section, the grep result is empty
-last_page=`curl -s -I "https://api.github.com${GITHUB_API_REST}" -H "${GITHUB_API_HEADER_ACCEPT}" -H "Authorization: token $GITHUB_TOKEN" | grep '^Link:' | sed -e 's/^Link:.*page=//g' -e 's/>.*$//g'`
+# Function to list users with read access to the repository
+function list_users_with_read_access {
+    local endpoint="repos/${REPO_OWNER}/${REPO_NAME}/collaborators"
 
-# does this result use pagination?
-if [ -z "$last_page" ]; then
-    # no - this result has only one page
-    rest_call "https://api.github.com${GITHUB_API_REST}"
-else
+    # Fetch the list of collaborators on the repository
+    collaborators="$(github_api_get "$endpoint" | jq -r '.[] | select(.permissions.pull == true) | .login')"
 
-    # yes - this result is on multiple pages
-    for p in `seq 1 $last_page`; do
-        rest_call "https://api.github.com${GITHUB_API_REST}?page=$p"
-    done
-fi
+    # Display the list of collaborators with read access
+    if [[ -z "$collaborators" ]]; then
+        echo "No users with read access found for ${REPO_OWNER}/${REPO_NAME}."
+    else
+        echo "Users with read access to ${REPO_OWNER}/${REPO_NAME}:"
+        echo "$collaborators"
+    fi
+}
 
+# Main script
+
+echo "Listing users with read access to ${REPO_OWNER}/${REPO_NAME}..."
+list_users_with_read_access
 cat $TMPFILE
